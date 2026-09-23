@@ -1,0 +1,307 @@
+openapi: 3.1.0
+info:
+  title: android-local-ai-app
+  version: 0.1.0-draft
+  description: >-
+    Local model services on a phone, over loopback HTTP. Chat and speech follow
+    OpenAI's shapes so existing clients need only a changed base URL; morphology
+    and classification have no OpenAI equivalent and are defined here.
+    Specification only — nothing is implemented.
+  license: { name: Apache-2.0 }
+
+servers:
+  - url: http://127.0.0.1:8080
+    description: Loopback. Binding any other interface is a deliberate setting.
+
+tags:
+  - name: chat
+  - name: speech
+  - name: morphology
+  - name: classification
+  - name: operations
+
+paths:
+  /v1/chat/completions:
+    post:
+      tags: [chat]
+      summary: OpenAI-compatible chat completion, forwarded verbatim to llama-server
+      description: >-
+        The body is passed through unchanged, so the authoritative contract is
+        llama.cpp's. response_format json_object is supported via GBNF grammars
+        and should be used: it constrains generation rather than asking, which
+        is what makes a 1-2B model's JSON parseable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messages]
+              properties:
+                model: { type: string }
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    required: [role, content]
+                    properties:
+                      role: { type: string, enum: [system, user, assistant] }
+                      content: { type: string }
+                stream: { type: boolean, default: false }
+                temperature: { type: number }
+                response_format:
+                  type: object
+                  properties:
+                    type: { type: string, enum: [text, json_object] }
+      responses:
+        "200":
+          description: Completion, or an SSE stream when stream is true
+          content:
+            application/json: { schema: { type: object } }
+            text/event-stream: { schema: { type: string } }
+        "409": { $ref: "#/components/responses/WeightsAbsent" }
+        "503": { $ref: "#/components/responses/EngineUnavailable" }
+        "507": { $ref: "#/components/responses/InsufficientMemory" }
+
+  /v1/audio/transcriptions:
+    post:
+      tags: [speech]
+      summary: OpenAI-compatible transcription
+      description: >-
+        16 kHz mono WAV only. whisper.cpp is built without ffmpeg, so WebM/Opus
+        from MediaRecorder must be converted by the client — AudioContext
+        decode plus a WAV header, no dependency. The client also owns
+        end-of-speech detection, which the Web Speech API used to do for free.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 16 kHz mono WAV }
+                model: { type: string }
+                language: { type: string, description: ISO 639-1; omit to detect }
+                response_format: { type: string, enum: [json, text], default: json }
+      responses:
+        "200":
+          description: Transcript
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [text]
+                properties:
+                  text: { type: string }
+                  language: { type: string }
+        "409": { $ref: "#/components/responses/WeightsAbsent" }
+        "503": { $ref: "#/components/responses/EngineUnavailable" }
+
+  /v1/morphology:
+    post:
+      tags: [morphology]
+      summary: Tokenise Japanese and place the readings
+      description: >-
+        MeCab with IPADIC. Returns the raw token stream and, when annotate is
+        true, the same stream aligned into JP Core's bracket notation with the
+        compound override table applied — so 一 + 階 becomes 一階【いっかい】,
+        which no analyser that segments the compound can produce alone.
+        The alignment and the table belong to jp_core.reading; any disagreement
+        with it is a bug here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 4096 }
+                annotate: { type: boolean, default: true }
+                overrides:
+                  type: object
+                  additionalProperties: { type: string }
+                  description: Per-request additions to the built-in override table
+      responses:
+        "200":
+          description: Tokens, and the annotated text when requested
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  annotated:
+                    type: string
+                    example: 受【う】け付【つ】けは一階【いっかい】にあります。
+                  tokens:
+                    type: array
+                    items:
+                      type: object
+                      required: [surface]
+                      properties:
+                        surface: { type: string }
+                        reading:
+                          type: string
+                          description: Katakana; absent when the analyser has none
+        "409": { $ref: "#/components/responses/WeightsAbsent" }
+        "503": { $ref: "#/components/responses/EngineUnavailable" }
+
+  /v1/classify:
+    post:
+      tags: [classification]
+      summary: Schema-driven classification and extraction, one forward pass
+      description: >-
+        GLiNER2.5. The schema is per request, not per deployment: N declared
+        labels become N logits, so the model cannot answer off-schema and there
+        is nothing to parse. Full score distributions are always returned —
+        a caller applying a confidence floor needs the runner-up, and
+        recomputing it costs another forward pass.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, schema]
+              properties:
+                text: { type: string, maxLength: 8192 }
+                schema:
+                  type: object
+                  minProperties: 1
+                  maxProperties: 16
+                  additionalProperties:
+                    type: object
+                    required: [type]
+                    properties:
+                      type: { type: string, enum: [choice, multi, entities] }
+                      labels:
+                        type: array
+                        minItems: 2
+                        maxItems: 64
+                        items: { type: string }
+                        description: Required for choice and multi
+                      threshold: { type: number, minimum: 0, maximum: 1 }
+      responses:
+        "200":
+          description: One result per schema field
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    label: { type: string, description: choice only }
+                    labels:
+                      type: array
+                      items: { type: string }
+                      description: multi only
+                    spans:
+                      type: array
+                      description: entities only
+                      items:
+                        type: object
+                        properties:
+                          text:  { type: string }
+                          label: { type: string }
+                          start: { type: integer }
+                          end:   { type: integer }
+                          score: { type: number }
+                    score: { type: number }
+                    scores:
+                      type: object
+                      additionalProperties: { type: number }
+        "400":
+          description: Schema rejected — too many labels, text over budget, or depth exceeded
+        "409": { $ref: "#/components/responses/WeightsAbsent" }
+        "503": { $ref: "#/components/responses/EngineUnavailable" }
+
+  /v1/status:
+    get:
+      tags: [operations]
+      summary: Every service's state and what it is costing
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  services:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        state: { type: string, enum: [absent, cold, warming, ready] }
+                        model: { type: string }
+                        residentBytes: { type: integer }
+                        idleSeconds: { type: integer }
+                        evictsInSeconds: { type: integer }
+                  availableBytes: { type: integer }
+
+  /v1/models/{service}/download:
+    post:
+      tags: [operations]
+      summary: Download weights — always explicit, never implicit
+      parameters: [{ $ref: "#/components/parameters/Service" }]
+      responses:
+        "202": { description: Download started }
+
+  /v1/models/{service}:
+    delete:
+      tags: [operations]
+      summary: Delete weights and reclaim the disk
+      parameters: [{ $ref: "#/components/parameters/Service" }]
+      responses:
+        "204": { description: Deleted }
+
+  /v1/services/{service}/stop:
+    post:
+      tags: [operations]
+      summary: Evict now rather than at the idle timeout
+      parameters: [{ $ref: "#/components/parameters/Service" }]
+      responses:
+        "204": { description: Stopped }
+
+components:
+  parameters:
+    Service:
+      name: service
+      in: path
+      required: true
+      schema: { type: string, enum: [chat, speech, morphology, classification] }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message: { type: string }
+            service: { type: string }
+            detail:
+              type: string
+              description: Engine stderr, last 64 lines, on 503
+
+  responses:
+    WeightsAbsent:
+      description: >-
+        Weights are not on disk. Names the model and its size. Never triggers a
+        download: these are hundreds of megabytes and the user may be metered.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    EngineUnavailable:
+      description: >-
+        The engine failed to start or died. Carries its last 64 stderr lines,
+        because a bare 503 is invisible from a browser's rejected fetch.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }
+    InsufficientMemory:
+      description: Loading would not fit. Names what would have to be evicted.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Error" } }

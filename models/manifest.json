@@ -1,0 +1,73 @@
+{
+  "_note": "Draft. Sizes are approximate and every sha256 is unfilled: a checksum must be computed from the artifact that will actually be served, never copied from a listing. A null checksum must fail the download, not skip verification.",
+  "schemaVersion": 1,
+  "services": {
+    "chat": {
+      "default": "qwen3-1.7b-instruct-q4_k_m",
+      "options": {
+        "qwen3-1.7b-instruct-q4_k_m": {
+          "approxBytes": 1181116006,
+          "residentBytes": 1288490188,
+          "sha256": null,
+          "note": "Default. Chosen to leave room for the other three on a 6 GB device."
+        },
+        "gemma-3-1b-it-q4_k_m": {
+          "approxBytes": 858993459,
+          "residentBytes": 966367641,
+          "sha256": null,
+          "note": "Tighter devices. WMT24++ 36.7 against the 4B's 48.4 — a real drop, not a small one."
+        },
+        "translategemma-4b-q4_k_m": {
+          "approxBytes": 2684354560,
+          "residentBytes": 2899102924,
+          "sha256": null,
+          "note": "Best translation available at this scale. 8 GB devices only; does not fit beside whisper and the classifier at 6 GB."
+        }
+      }
+    },
+    "speech": {
+      "default": "whisper-base",
+      "options": {
+        "whisper-base":  { "approxBytes": 147951616, "sha256": null },
+        "whisper-small": { "approxBytes": 487587840, "sha256": null, "note": "~2x base latency." },
+        "whisper-tiny":  { "approxBytes": 77594624,  "sha256": null, "note": "Not a default: invents plausible kana on Japanese." }
+      }
+    },
+    "morphology": {
+      "default": "ipadic",
+      "options": {
+        "ipadic": {
+          "approxBytes": 52428800,
+          "residentBytes": 14680064,
+          "sha256": null,
+          "note": "Measured: 1 ms build, 14 MB resident, 0.12 ms/sentence. Not UniDic — see docs/decisions.md D5."
+        }
+      }
+    },
+    "classification": {
+      "default": "gliner2.5-multi-v1-int8",
+      "options": {
+        "gliner2.5-multi-v1-int8": {
+          "source": "fastino/gliner2.5-multi-v1",
+          "params": 287000000,
+          "approxBytes": null,
+          "sha256": null,
+          "note": "Default despite upstream recommending base: the English-only checkpoints are the wrong tool for an app about language pairs. Size unknown until exported and statically quantised."
+        },
+        "gliner2.5-base-v1-int8": {
+          "source": "fastino/gliner2.5-base-v1",
+          "params": 194000000,
+          "approxBytes": null,
+          "sha256": null,
+          "note": "Upstream's recommended default, and the right one for English-only deployments."
+        },
+        "gliner2.5-small-v1-int8": {
+          "source": "fastino/gliner2.5-small-v1",
+          "params": 74000000,
+          "approxBytes": null,
+          "sha256": null
+        }
+      }
+    }
+  }
+}
