@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Android
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Models are downloaded, never committed — see models/manifest.json
+*.gguf
+*.onnx
+*.bin

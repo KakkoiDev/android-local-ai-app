@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Local network check</title>
+<style>
+  :root { color-scheme: light dark; --bg:#F3F0E7; --fg:#1C1A17; --ok:#2E7D32; --no:#B8342A; --dim:#6b6560; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#191712; --fg:#EDE8DC; --ok:#7BC47F; --no:#E0614B; --dim:#9a938a; } }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+         font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  h1 { font-size:1.25rem; margin:0 0 4px; }
+  p.sub { margin:0 0 20px; color:var(--dim); font-size:.9rem; }
+  button { font:inherit; padding:14px 20px; min-height:48px; border:0; border-radius:10px;
+           background:var(--fg); color:var(--bg); width:100%; }
+  .row { display:flex; gap:10px; align-items:baseline; padding:8px 0; border-bottom:1px solid #8883; }
+  .row b { font-weight:600; min-width:9ch; }
+  .ok { color:var(--ok); } .no { color:var(--no); }
+  pre { overflow-x:auto; background:#8881; padding:12px; border-radius:8px; font-size:.8rem; }
+  input { font:inherit; padding:10px; width:100%; box-sizing:border-box; margin-bottom:12px;
+          border-radius:8px; border:1px solid #8886; background:transparent; color:var(--fg); }
+</style>
+
+<h1>Local network check</h1>
+<p class="sub">Serve this over <b>HTTPS from a public origin</b> and open it on the phone.
+Opened from <code>localhost</code> or <code>file://</code> it proves nothing: loopback talking to
+loopback is the one case Chrome's Local Network Access permission does not apply to.</p>
+
+<input id="url" value="http://127.0.0.1:8080/ping" spellcheck="false">
+<button id="go">Check</button>
+
+<div id="out"></div>
+
+<script>
+const out = document.getElementById("out");
+const row = (label, value, state) =>
+  `<div class="row"><b>${label}</b><span class="${state || ""}">${value}</span></div>`;
+
+document.getElementById("go").onclick = async () => {
+  const url = document.getElementById("url").value.trim();
+  out.innerHTML = row("status", "checking…");
+  const started = performance.now();
+  try {
+    // targetAddressSpace tells Chrome the destination is local before it
+    // resolves, which is what lets it prompt instead of blocking outright.
+    // Unknown options are ignored by browsers that do not implement it.
+    const response = await fetch(url, { targetAddressSpace: "local", cache: "no-store" });
+    const ms = Math.round(performance.now() - started);
+    if (!response.ok) {
+      out.innerHTML = row("status", `HTTP ${response.status}`, "no");
+      return;
+    }
+    const data = await response.json();
+    out.innerHTML =
+      row("reachable", `yes, in ${ms} ms`, "ok") +
+      row("uptime", `${data.uptimeSeconds}s`) +
+      row("beats", data.beats) +
+      row("in airplane", data.beatsInAirplaneMode) +
+      row("restarts", data.restarts, data.restarts ? "no" : "ok") +
+      row("gaps", (data.gaps || []).length, (data.gaps || []).length ? "no" : "ok") +
+      row("airplane now", String(data.airplaneModeNow)) +
+      row("battery exempt", String(data.ignoringBatteryOptimizations),
+          data.ignoringBatteryOptimizations ? "ok" : "no") +
+      `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+  } catch (error) {
+    // A blocked or dismissed permission and a dead service are the same
+    // TypeError here — the browser deliberately does not distinguish them, so
+    // neither can this page.
+    out.innerHTML =
+      row("reachable", "no", "no") +
+      row("error", String(error)) +
+      `<pre>Any of:
+  • the probe is not running
+  • you dismissed Chrome's Local Network Access prompt
+    (reload and accept it, or clear the permission in site settings)
+  • this page is not on an HTTPS origin, so the request was
+    blocked as mixed content before the permission applied
+  • the port is wrong</pre>`;
+  }
+};
+</script>

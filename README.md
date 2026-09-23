@@ -9,10 +9,15 @@ but nothing here is specific to it — can point a settings field at
 `http://localhost:8080` and get translation, dictation, Japanese readings and
 classification without a single request leaving the device.
 
-**Status: specification only.** Nothing here is built. Every number in these
-documents is either measured, cited, or marked as an estimate, and
-[docs/decisions.md](docs/decisions.md) records what was tried and rejected so
-the same ground is not covered twice.
+**Status: specification, plus one thing that runs.** None of the four services
+is built. Every number in these documents is either measured, cited, or marked
+as an estimate, and [docs/decisions.md](docs/decisions.md) records what was
+tried and rejected so the same ground is not covered twice.
+
+The exception is [`probe/`](probe/README.md): a throwaway APK that does nothing
+but keep running, so you can find out whether this phone lets it before anyone
+integrates two C++ inference engines. It is the cheapest answer to the open
+question that decides whether the rest is worth building.
 
 ## The four services
 
@@ -52,5 +57,7 @@ OpenAI compatibility, their CORS flags and their bug fixes for free.
 | [docs/models.md](docs/models.md) | Which checkpoints, how big, and whether four of them fit in 6 GB |
 | [docs/classifier.md](docs/classifier.md) | GLiNER2.5: what it is, and what it is worth having on a phone |
 | [docs/android-constraints.md](docs/android-constraints.md) | The platform rules that shape all of the above |
+| [docs/offline.md](docs/offline.md) | Airplane mode: what actually depends on the radios, and it is not the models |
 | [docs/build.md](docs/build.md) | Cross-compiling two C++ projects and shipping an APK |
 | [docs/decisions.md](docs/decisions.md) | What was measured, what was rejected, and why |
+| [probe/README.md](probe/README.md) | The survival probe: install it, leave it overnight, read the verdict |

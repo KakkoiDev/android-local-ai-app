@@ -1,0 +1,61 @@
+name: Survival probe APK
+
+# The probe exists to be installed on a real phone, so the build has to end in
+# something downloadable from that phone. Workflow artifacts need a GitHub
+# login to fetch; a release asset does not.
+on:
+  push:
+    branches: [main]
+    paths: ["probe/**", ".github/workflows/probe.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: probe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Name it after the commit
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "out/survival-probe-${GITHUB_SHA::7}.apk"
+          sha256sum out/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: survival-probe-apk
+          path: probe/out/*.apk
+
+      # A single moving pre-release rather than one per commit: there is only
+      # ever one probe worth installing, and it is the current one.
+      - name: Publish to the rolling pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete probe-latest --yes --cleanup-tag || true
+          gh release create probe-latest out/*.apk \
+            --prerelease \
+            --title "Survival probe (latest)" \
+            --notes "Debug-signed throwaway. Install, press Start, leave it overnight, read the verdict.
+
+          Built from ${GITHUB_SHA}.
+
+          It answers three questions: does a foreground service survive this device's battery management, is a loopback socket still reachable hours later, and does any of it care about airplane mode. See probe/README.md."
