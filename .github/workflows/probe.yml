@@ -15,6 +15,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Not because anything hangs today — a cold run builds in about 90 seconds.
+    # It is so that a build which ever does hang fails while someone is still
+    # looking, instead of sitting on the default six-hour timeout.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: probe
